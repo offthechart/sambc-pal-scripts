@@ -1,0 +1,42 @@
+Pal.LockExecution;
+Pal.Loop := True;
+  
+  
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+CAT['Jingles (ALL)'].QueueTop(smLRP,noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+CAT['Station IDs (ALL)'].QueueTop(smRandom,noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+Cat['Station IDs (ALL)'].QueueTop(smLRP, noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+CAT['Jingles (ALL)'].QueueTop(smRandom,noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+CAT['Station IDs (ALL)'].QueueTop(smRandom,noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+Cat['Station IDs (ALL)'].QueueTop(smLRP, noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+PAL.WaitForPlayCount(2);
+PAL.WaitForQueue(0);
+Cat['Station IDs (ALL)'].QueueTop(smLRP, noRules);
+PAL.WaitForPlayCount(1);
+PAL.WaitForQueue(0);
+
+
+PAL.UnlockExecution;

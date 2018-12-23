@@ -1,0 +1,16 @@
+PAL.LockExecution;
+PAL.Loop := True;
+
+var Song : TSongInfo = ActivePlayer.GetSongInfo;
+if ((Song['Artist'] = 'Live DJ') AND (Song['Title'] = 'See Homepage On Air Info')) then
+begin
+var SQL : String = 'UPDATE otcoutput SET status = '+QuotedStr('onair');
+ExecSQL(SQL,[]);
+end
+else
+begin
+var SQL : String = 'UPDATE otcoutput SET status = '+QuotedStr('offair');
+ExecSQL(SQL,[]);
+end;
+
+PAL.UnlockExecution;

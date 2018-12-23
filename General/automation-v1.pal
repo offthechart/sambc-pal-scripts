@@ -1,0 +1,471 @@
+{Script developed for Off The Chart Radio by Andrew Bonney. Copyright 2008.}
+{EVENTS ARE LOCKED IN 5 SECONDS BEFORE THEY ARE DUE TO EXECUTE AND CANNOT BE STOPPED WITHOUT HALTING THE SCRIPT}
+{EVENTS NOT ALREADY LOCKED IN CAN BE RECONFIGURED USING THE WEB INTERFACE}
+
+{Script version 1: Handles basic event scheduling, not including encoder starts/stops and clockwheel loading}
+{Current bugs: PreRec shows using dual files cause a handover between segments}
+{If change handover/connect time from 59:58 / 58:00 then need to fix 118/86400}
+
+PAL.LockExecution;
+Pal.Loop := True;
+
+const handoverLoc : String = 'C:\Documents and Settings\Off The Chart Radio\Desktop\SAM\Handovers\';
+const defaultServer : String = 'http://127.0.0.1:3830/stream';
+const tothLoc : String = 'C:\Documents and Settings\Off The Chart Radio\Desktop\SAM\Handovers\';
+const replayLoc : String = 'C:\Documents and Settings\Off The Chart Radio\Desktop\SAM\ReplayZone\';
+const preRecLoc : String = 'C:\Documents and Settings\Off The Chart Radio\Desktop\SAM\PreRecords\';
+
+var btrue : Boolean = true;
+var ctrue : Boolean = true;
+var dtrue : Boolean = true;
+
+var runlive : Boolean = false;
+var runpre : Boolean = false;
+var runrep : Boolean = false;
+var runplay : Boolean = false;
+
+
+{Start function to retrieve correct handover jingle}
+
+function getHandoverJingle(SetTime : String) : String;
+begin
+WriteLn(DateTimeTostr(Now) + ' Running getHandoverJingle');
+var hh,mm,ss,ms : Integer;
+DecodeTime(Now,hh,mm,ss,ms);
+var oldparam : Integer = 57;
+
+if (SetTime = 'Next') then
+begin
+oldparam := 54;
+end;
+
+if (mm > oldparam) then
+begin
+DecodeTime(Now + (1/24),hh,mm,ss,ms);
+end;
+if (((mm > oldparam) Or (mm < 3)) And (fileexists(handoverLoc + 'OTC_ShowCloser' + (IntToStr(hh)) + '.mp3'))) then
+begin
+result := handoverLoc + 'OTC_ShowCloser' + (IntToStr(hh)) + '.mp3';
+end
+else
+begin
+result := handoverLoc + 'OTC_ShowCloserGeneric.mp3';
+end;
+WriteLn(DateTimeTostr(Now) + ' Finished getHandoverJingle');
+end;
+
+{End function to retrieve correct handover jingle}
+
+{Start function to begin themed playout show}
+
+function startPlayout(Theme : String; SetTime : String) : String;
+begin
+WriteLn(DateTimeTostr(Now) + ' Running startPlayout');
+Queue.Clear;
+if (SetTime = 'Now') then
+begin
+if QueuedPlayer <> nil then
+begin
+QueuedPlayer.Eject;
+end;
+if (fileexists(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3')) then
+begin
+CAT['Other (All)'].AddFile(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3',ipTop);
+Queue.AddFile(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3',ipTop);
+end
+else
+begin
+CAT['Other (All)'].AddFile(tothLoc + 'OTC_TOTH_Generic_Generic.mp3',ipTop);
+Queue.AddFile(tothLoc + 'OTC_TOTH_Generic_Generic.mp3',ipTop);
+end;
+CAT['Other (All)'].AddFile(getHandoverJingle('Now'),ipTop);
+Queue.AddFile(getHandoverJingle('Now'),ipTop);
+ActivePlayer.FadeToNext;
+end
+else
+begin
+if (fileexists(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3')) then
+begin
+CAT['Other (All)'].AddFile(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3',ipTop);
+Queue.AddFile(tothLoc + 'OTC_TOTH_Generic_' + Theme + '.mp3',ipTop);
+end
+else
+begin
+CAT['Other (All)'].AddFile(tothLoc + 'OTC_TOTH_Generic_Generic.mp3',ipTop);
+Queue.AddFile(tothLoc + 'OTC_TOTH_Generic_Generic.mp3',ipTop);
+end;
+CAT['Other (All)'].AddFile(getHandoverJingle('Next'),ipTop);
+Queue.AddFile(getHandoverJingle('Next'),ipTop);
+end;
+
+
+WriteLn(DateTimeTostr(Now) + ' Finished startPlayout');
+end;
+
+{End function to begin playout}
+
+{Start function to connect a live DJ}
+
+function startLiveShow(URL : String; SetTime : String; execdatetime : DateTime; myind : String) : String;
+begin
+WriteLn(DateTimeTostr(Now) + ' Running startLiveShow');
+Queue.Clear;
+if (URL = '') then
+begin
+URL := defaultServer;
+end;
+if (SetTime = 'Now') then
+begin
+if QueuedPlayer <> nil then
+begin
+QueuedPlayer.Eject;
+end;
+CAT['Other (All)'].AddURL(URL,ipTop);
+CAT['Other (All)'].AddFile(getHandoverJingle('Now'),ipTop);
+var myURL : String = URL;
+var myartist : String = 'Live DJ';
+var mytitle : String = 'See Homepage On Air Info';
+WriteLn('got to here 1 '+myURL+' '+myartist+' '+mytitle);
+var SQL : String = 'UPDATE songlist SET artist = '+QuotedStr(myartist)+', title = '+QuotedStr(mytitle)+' WHERE filename = '+QuotedStr(myURL);
+ExecSQL(SQL,[]);
+WriteLn('got to here 2');
+Queue.AddURL(URL,ipTop);
+Queue.AddURL(URL,ipTop);
+Queue.AddFile(getHandoverJingle('Now'),ipTop);
+ActivePlayer.FadeToNext;
+btrue := false;
+end
+else
+begin
+{If DJ not on air, change event to be a connect instead}
+var Song : TSongInfo = ActivePlayer.GetSongInfo;
+if ((Song['Artist'] <> 'Live DJ') AND (Song['Title'] <> 'See Homepage On Air Info')) then
+begin
+var dateTimeToChange : DateTime = execdatetime;
+dateTimeToChange := (dateTimeToChange + (118/86400));
+var yy,mm,dd,hh,m,ss,ms : Integer;
+DecodeDate(dateTimeToChange,yy,mm,dd);
+DecodeTime(dateTimeToChange,hh,m,ss,ms);
+var yystr,mmstr,ddstr,hhstr,mstr,ssstr : String;
+yystr := IntToStr(yy);
+If length(IntToStr(mm)) = 1 then
+begin
+mmstr := '0' + IntToStr(mm);
+end
+else
+begin
+mmstr := IntToStr(mm);
+end;
+If length(IntToStr(dd)) = 1 then
+begin
+ddstr := '0' + IntToStr(dd);
+end
+else
+begin
+ddstr := IntToStr(dd);
+end;
+If length(IntToStr(hh)) = 1 then
+begin
+hhstr := '0' + IntToStr(hh);
+end
+else
+begin
+hhstr := IntToStr(hh);
+end;
+If length(IntToStr(m)) = 1 then
+begin
+mstr := '0' + IntToStr(m);
+end
+else
+begin
+mstr := IntToStr(m);
+end;
+If length(IntToStr(ss)) = 1 then
+begin
+ssstr := '0' + IntToStr(ss);
+end
+else
+begin
+ssstr := IntToStr(ss);
+end;
+var dateString : String = yystr + '-' + mmstr + '-' + ddstr + ' ' + hhstr + ':' + mstr + ':' + ssstr;
+// var SQL : String = 'UPDATE otcevents SET arg1 = '+QuotedStr('Now')+', execdatetime = '+QuotedStr(dateString)+' WHERE ind = '+QuotedStr(myind);
+WriteLn('Executing');
+ExecSQL('UPDATE otcevents SET arg1 = '+QuotedStr('Now')+', execdatetime = '+QuotedStr(dateString)+' WHERE ind = '+QuotedStr(myind),[]);
+WriteLn('Executed');
+end
+{
+// var fixEvent : TDataSet;
+// var SQL : String = 'SELECT * FROM otcevents WHERE ind = '+indextochange;
+// fixEvent := Query('SELECT * FROM otcevents WHERE ind = :indextochange',[StrToInt(indextochange)],True);
+var dateTimeToChange : DateTime = execdatetime;
+dateTimeToChange := (dateTimeToChange + (118/86400));
+var changestr : String = 'Now';
+var yy,mm,dd,hh,m,ss,ms : Integer;
+DecodeDate(dateTimeToChange,yy,mm,dd);
+DecodeTime(dateTimeToChange,hh,m,ss,ms);
+var yystr,mmstr,ddstr,hhstr,mstr,ssstr : String;
+yystr := IntToStr(yy);
+If length(IntToStr(mm)) = 1 then
+begin
+mmstr := '0' + IntToStr(mm);
+end
+else
+begin
+mmstr := IntToStr(mm);
+end;
+If length(IntToStr(dd)) = 1 then
+begin
+ddstr := '0' + IntToStr(dd);
+end
+else
+begin
+ddstr := IntToStr(dd);
+end;
+If length(IntToStr(hh)) = 1 then
+begin
+hhstr := '0' + IntToStr(hh);
+end
+else
+begin
+hhstr := IntToStr(hh);
+end;
+If length(IntToStr(m)) = 1 then
+begin
+mstr := '0' + IntToStr(m);
+end
+else
+begin
+mstr := IntToStr(m);
+end;
+If length(IntToStr(ss)) = 1 then
+begin
+ssstr := '0' + IntToStr(ss);
+end
+else
+begin
+ssstr := IntToStr(ss);
+end;
+// var myindexInt : Integer = fixEvent['ind'];
+// var myindexStr : String = IntToStr(myindexInt);
+// var myarg2Str : String = fixEvent['arg2'];
+var dateString : String = yystr + '-' + mmstr + '-' + ddstr + ' ' + hhstr + ':' + mstr + ':' + ssstr;
+DecodeDate(execdatetime,yy,mm,dd);
+DecodeTime(execdatetime,hh,m,ss,ms);
+yystr := IntToStr(yy);
+If length(IntToStr(mm)) = 1 then
+begin
+mmstr := '0' + IntToStr(mm);
+end
+else
+begin
+mmstr := IntToStr(mm);
+end;
+If length(IntToStr(dd)) = 1 then
+begin
+ddstr := '0' + IntToStr(dd);
+end
+else
+begin
+ddstr := IntToStr(dd);
+end;
+If length(IntToStr(hh)) = 1 then
+begin
+hhstr := '0' + IntToStr(hh);
+end
+else
+begin
+hhstr := IntToStr(hh);
+end;
+If length(IntToStr(m)) = 1 then
+begin
+mstr := '0' + IntToStr(m);
+end
+else
+begin
+mstr := IntToStr(m);
+end;
+If length(IntToStr(ss)) = 1 then
+begin
+ssstr := '0' + IntToStr(ss);
+end
+else
+begin
+ssstr := IntToStr(ss);
+end;
+var execdatetimeStr : String = yystr + '-' + mmstr + '-' + ddstr + ' ' + hhstr + ':' + mstr + ':' + ssstr;
+WriteLn('Amending handover event to connect ' + changestr + ' at ' + dateString + ' for original ' + execdatetimeStr);
+// ExecSQL(('INSERT INTO otcevents (arg1,arg2,execdatetime) VALUES ('+QuotedStr(changestr)+','+QuotedStr(myarg2Str)+','+QuotedStr(dateString)+')'), []);
+// WriteLn('here 3');
+// ExecSQL(('DELETE FROM otcevents WHERE ind = '+QuotedStr(myindexStr)), []);
+WriteLn('here 4');
+// ExecSQL('UPDATE otcevents SET arg1 = '+QuotedStr(changestr)+', execdatetime = '+QuotedStr(dateString)+' WHERE execdatetime = '+QuotedStr(execdatetimeStr),[]);
+// var SQL : String = 'UPDATE otcevents SET arg1 = '+QuotedStr(changestr)+', execdatetime = '+QuotedStr(dateString)+' WHERE execdatetime = '+QuotedStr(execdatetimeStr);
+// WriteLn(SQL);
+ExecSQL('UPDATE otcevents SET arg1 = :changestr, execdatetime = '+QuotedStr(dateString)+' WHERE execdatetime = '+QuotedStr(execdatetimeStr),[changestr]);
+WriteLn('here 6');
+end
+}
+{If DJ not on air, change event to be a connect instead}
+else
+begin
+CAT['Other (All)'].AddURL(URL,ipTop);
+CAT['Other (All)'].AddFile(getHandoverJingle('Next'),ipTop);
+
+var myURL : String = URL;
+var myartist : String = 'Live DJ';
+var mytitle : String = 'See Homepage On Air Info';
+var SQL : String = 'UPDATE songlist SET artist = '+QuotedStr(myartist)+', title = '+QuotedStr(mytitle)+' WHERE filename = '+QuotedStr(myURL);
+ExecSQL(SQL,[]);
+
+Queue.AddURL(URL,ipTop);
+Queue.AddURL(URL,ipTop);
+Queue.AddFile(getHandoverJingle('Next'),ipTop);
+btrue := false;
+end;
+end;
+
+
+WriteLn(DateTimeToStr(Now) + ' Finished startLiveShow');
+end;
+
+{End function to connect a live DJ}
+
+{Start function to start a pre-rec or replay}
+
+function startPreRec(ShowType : String; FileName : String; SetTime : String) : String;
+begin
+WriteLn(DateTimeTostr(Now) + ' Running startPreRec');
+Queue.Clear;
+if (ShowType = 'pre') then
+begin
+FileName := preRecLoc + FileName;
+end
+else
+begin
+FileName := replayLoc + FileName;
+end;
+
+if (SetTime = 'Now') then
+begin
+if QueuedPlayer <> nil then
+begin
+QueuedPlayer.Eject;
+end;
+CAT['Other (All)'].AddFile(FileName,ipTop);
+CAT['Other (All)'].AddFile(getHandoverJingle('Now'),ipTop);
+Queue.AddFile(FileName,ipTop);
+Queue.AddFile(getHandoverJingle('Now'),ipTop);
+ActivePlayer.FadeToNext;
+end
+else
+begin
+CAT['Other (All)'].AddFile(FileName,ipTop);
+CAT['Other (All)'].AddFile(getHandoverJingle('Next'),ipTop);
+Queue.AddFile(FileName,ipTop);
+Queue.AddFile(getHandoverJingle('Next'),ipTop);
+end;
+
+
+WriteLn(DateTimeTostr(Now) + ' Finished startPreRec');
+end;
+
+{End function to start a pre-rec or replay}
+
+
+
+
+
+{ START SCRIPT ACTIONS }
+
+
+WriteLn(DateTimeTostr(Now) + ' Running getDoNextEvent');
+{var Format : String = 'yyyy-mm-dd hh:mm:ss';
+var DateNowFormatted : String = FormatDateTime(Format,Now);}
+
+var nextEvent : TDataSet;
+nextEvent := Query('SELECT * FROM otcevents WHERE (execdatetime > :myDateTime) ORDER BY execdatetime ASC LIMIT 1',[Now],True);
+if nextEvent.IsEmpty then
+begin
+WriteLn('Found no future events');
+end
+else
+begin
+
+
+var dateFromRecord : String = DateTimeToStr(nextEvent['execdatetime']);
+var inDateFormat : DateTime = StrToDateTime(dateFromRecord);
+WriteLn('Event found, time is ' + dateFromRecord);
+if ((StrToDateTime(dateFromRecord)) < (Now + (5/86400))) then
+begin
+WriteLn('Event locked in, SAM frozen');
+if (nextEvent['eventtype'] = 'connect') then
+begin
+{arg11 sets when, arg2 sets url}
+runlive := true;
+PAL.WaitForTime(inDateFormat);
+end;
+if (nextEvent['eventtype'] = 'prerec') then
+begin
+{arg1 sets when, arg2 sets filename}
+runpre := true;
+PAL.WaitForTime(inDateFormat);
+end;
+if (nextEvent['eventtype'] = 'replay') then
+begin
+{arg1 sets when, arg2 sets filename}
+runrep := true;
+PAL.WaitForTime(inDateFormat);
+end;
+if (nextEvent['eventtype'] = 'playout') then
+begin
+{arg1 sets when, arg2 sets theme}
+runplay := true;
+PAL.WaitForTime(inDateFormat);
+end;
+
+end;
+
+end;
+
+if runlive = true then
+begin
+startLiveShow(nextEvent['arg2'],nextEvent['arg1'],nextEvent['execdatetime'],nextEvent['ind']);
+end;
+if runpre = true then
+begin
+startPreRec('pre',nextEvent['arg2'],nextEvent['arg1']);
+end;
+if runrep = true then
+begin
+startPreRec('rep',nextEvent['arg2'],nextEvent['arg1']);
+end;
+if runplay = true then
+begin
+startPlayout(nextEvent['arg2'],nextEvent['arg1']);
+end;
+
+
+if btrue = false then
+begin
+ctrue := false;
+PAL.WaitForPlayCount(2);
+end;
+
+if ctrue = false then
+begin
+dtrue := false;
+PAL.WaitForTime('+00:00:05');
+end;
+
+if dtrue = false then
+begin
+Queue.Clear;
+end;
+
+
+WriteLn(DateTimeTostr(Now) + ' Finished getDoNextEvent');
+
+
+
+Pal.UnlockExecution;

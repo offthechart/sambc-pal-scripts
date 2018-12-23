@@ -1,0 +1,75 @@
+{Script developed for Off The Chart Radio by Andrew Bonney. Copyright 2008.}
+{HANDLES INSTANT RECONNECTIONS AND ENCODER EVENTS, AS TRIGGERED BY THE MANAGEMENT SYSTEM}
+
+PAL.LockExecution;
+Pal.Loop := True;
+
+const defaultServer : String = 'http://127.0.0.1:3830/stream';
+
+
+{ START SCRIPT ACTIONS }
+
+
+WriteLn(DateTimeTostr(Now) + ' Running getDoNextEvent');
+
+var nextEvent : TDataSet;
+nextEvent := Query('SELECT * FROM otcinstants ORDER BY "index" ASC LIMIT 1',[],True);
+if nextEvent.IsEmpty then
+begin
+WriteLn('Found no future events');
+end
+else
+begin
+
+if nextEvent['eventtype'] = 'encoders' then
+begin
+if nextEvent['arg1'] = 'start' then
+begin
+WriteLn('Starting encoders');
+Encoders.StartAll;
+end;
+if nextEvent['arg1'] = 'stop' then
+begin
+WriteLn('Stopping encoders');
+Encoders.StopAll;
+end;
+end;
+
+if nextEvent['eventtype'] = 'reconnect' then
+begin
+if nextEvent['arg1'] = '' then
+begin
+WriteLn('Reconnecting ' + defaultServer);
+Queue.AddURL(defaultServer,ipTop);
+Cat['Station IDs (All)'].QueueTop(smLRP, NoRules);
+If QueuedPlayer <> nil then
+begin
+QueuedPlayer.Eject;
+end;
+ActivePlayer.FadeToNext;
+PAL.WaitForPlayCount(2);
+end
+else
+begin
+WriteLn('Reconnecting ' + nextEvent['arg1']);
+Queue.AddURL(nextEvent['arg1'],ipTop);
+Cat['Station IDs (All)'].QueueTop(smLRP, NoRules);
+If QueuedPlayer <> nil then
+begin
+QueuedPlayer.Eject;
+end;
+ActivePlayer.FadeToNext;
+PAL.WaitForPlayCount(2);
+end;
+end;
+
+var eventtype : String = nextEvent['eventtype'];
+var arg1 : String = nextEvent['arg1'];
+ExecSQL(('DELETE FROM otcinstants WHERE eventtype = :eventtype AND arg1 = :arg1'), [eventtype,arg1]);
+end;
+
+WriteLn(DateTimeTostr(Now) + ' Finished getDoNextEvent');
+
+
+
+Pal.UnlockExecution;
